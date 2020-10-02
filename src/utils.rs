@@ -87,12 +87,6 @@ impl<Int: PrimInt> std::ops::Div<Int> for QuadPoly<Int> {
     }
 }
 
-// /// A quadratic polynomial of the form x^2 + c for
-// /// some integer c
-// struct SimpleQuadPoly<Int: PrimInt> {
-//     c: Int,
-// }
-
 pub fn gcd<Int: PrimInt>(mut a: Int, mut b: Int) -> Int {
     if a < b {
         std::mem::swap(&mut a, &mut b);
@@ -138,20 +132,8 @@ pub fn poly_pseudo_div<Int: PrimInt + std::ops::AddAssign + std::ops::SubAssign>
             _ => unreachable!()
         };
         let s = x_degr_minus_degd * (r.lc());
-        let sb = match x_degr_minus_degd.degree() {
-            0 => QuadPoly {
-                a: b_poly.a * (r.lc()), b: b_poly.b * (r.lc()), c: b_poly.c * (r.lc()),
-            },
-            1 => QuadPoly {
-                a: b_poly.b * (r.lc()), b: b_poly.c * (r.lc()), c: Int::zero(),
-            },
-            2 => QuadPoly {
-                a: b_poly.c * (r.lc()), b: Int::zero(), c: Int::zero(),
-            },
-            _ => unreachable!()
-        };
         q = (q * d) + s;
-        r = (r * d) - sb;
+        r = (r * d) - s * b_poly;
         if e != 0 {
             e = e - 1;
         }

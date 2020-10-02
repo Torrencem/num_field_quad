@@ -82,17 +82,18 @@ impl<Int: MyPrimInt> QFElement<Int> {
     pub fn inverse(&self) -> Self {
         let my_poly = QuadPoly { a: Int::zero(), b: self.a, c: self.b };
         let t = QuadPoly { a: Int::one(), b: Int::zero(), c: self.field.c };
-        let (_v, u, gcd) = poly_extended_gcd(t, my_poly);
+        let (v, u, gcd) = poly_extended_gcd(t, my_poly);
         if gcd.degree() != 0 {
             dbg!(t);
             dbg!(my_poly);
             dbg!(gcd);
         }
         assert!(gcd.degree() == 0);
+        let d = (v * t + u * my_poly).c;
         QFElement {
             a: u.b * self.d,
             b: u.c * self.d,
-            d: Int::zero() - gcd.c,
+            d: Int::zero() - d,
             field: self.field,
         }.reduce()
     }
