@@ -115,6 +115,12 @@ pub fn lcm<Int: PrimInt>(a: Int, b: Int) -> Int {
 
 // Algorithm 3.1.2
 pub fn poly_pseudo_div<Int: PrimInt + std::ops::AddAssign + std::ops::SubAssign>(a_poly: QuadPoly<Int>, b_poly: QuadPoly<Int>) -> (QuadPoly<Int>, QuadPoly<Int>) {
+    assert!(a_poly.degree() >= b_poly.degree());
+    if b_poly.degree() == 0 {
+        return (a_poly, QuadPoly::constant(Int::zero()));
+    }
+
+
     let mut r = a_poly;
     let mut q = QuadPoly {
         a: Int::zero(),
@@ -208,10 +214,10 @@ pub fn poly_extended_gcd<Int: PrimInt + std::ops::AddAssign + std::ops::SubAssig
     
     // TODO: This should only work for "coprime" polynomials, this should be !r_prev.is_zero()
     // (or something like that)
-    // while r.degree() != 0 {
-    while !r.is_zero() {
-        dbg!(r_prev);
-        dbg!(r);
+    while r.degree() != 0 {
+    // while !r.is_zero() {
+        // dbg!(r_prev);
+        // dbg!(r);
         let (q, _) = poly_pseudo_div(r_prev, r);
         let d = r.lc();
         let e = r_prev.degree() - r.degree() + 1;
