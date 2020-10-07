@@ -8,8 +8,8 @@ mod utils;
 use utils::*;
 use num_traits::PrimInt;
 
-pub trait MyPrimInt: PrimInt + std::ops::AddAssign + std::ops::SubAssign + std::fmt::Debug { }
-impl<T: PrimInt + std::ops::AddAssign + std::ops::SubAssign + std::fmt::Debug> MyPrimInt for T { }
+pub trait MyPrimInt: PrimInt + std::ops::AddAssign + std::ops::SubAssign + std::fmt::Debug + std::ops::Neg<Output=Self> { }
+impl<T: PrimInt + std::ops::AddAssign + std::ops::SubAssign + std::fmt::Debug + std::ops::Neg<Output=Self>> MyPrimInt for T { }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct QuadraticField<Int: MyPrimInt> {
@@ -82,18 +82,20 @@ impl<Int: MyPrimInt> QFElement<Int> {
     pub fn inverse(&self) -> Self {
         let my_poly = QuadPoly { a: Int::zero(), b: self.a, c: self.b };
         let t = QuadPoly { a: Int::one(), b: Int::zero(), c: self.field.c };
-        let (v, u, gcd) = poly_extended_gcd(t, my_poly);
+        let (_v, u, gcd) = poly_extended_gcd(t, my_poly);
         if gcd.degree() != 0 {
             dbg!(t);
             dbg!(my_poly);
             dbg!(gcd);
         }
         assert!(gcd.degree() == 0);
-        let d = (v * t + u * my_poly).c;
+        let tmp1 = QFElement {a: u.b * self.d, b: u.c * self.d, d: Int::one(), field: self.field};
+        let tmp2 = *self * tmp1;
+        assert_eq!(tmp2.b, Int::zero());
         QFElement {
-            a: u.b * self.d,
-            b: u.c * self.d,
-            d: Int::zero() - d,
+            a: tmp1.a,
+            b: tmp1.b,
+            d: tmp2.a / tmp2.d,
             field: self.field,
         }.reduce()
     }
@@ -103,6 +105,11 @@ impl<Int: MyPrimInt> QFElement<Int> {
         self.a = self.a / g;
         self.b = self.b / g;
         self.d = self.d / g;
+        if self.d < Int::zero() {
+            self.a = -self.a;
+            self.b = -self.b;
+            self.d = -self.d;
+        }
         self
     }
 }
@@ -259,15 +266,22 @@ mod tests {
         assert!(phi * phi - phi - 1 == 0);
     }
 
+    fn test_mul_inverse_value<Int: MyPrimInt>(val: QFElement<Int>) {
+        assert_eq!(val.inverse().inverse(), val);
+        assert_eq!(val * val.inverse(), QFElement::from_parts(Int::one(), Int::zero(), Int::one(), val.field));
+        
+    }
+
     #[test]
     fn test_mul_inverse() {
-        // let phi = qfelement!((1) + (1)sqrt(5)) / 2;
-        // assert_eq!(phi.inverse().inverse(), phi);
-        // assert_eq!(phi * phi.inverse(), qfelement!((1) + (0)sqrt(5)));
+        let vals = vec![
+            qfelement!((10) + (-1022)sqrt(76)) / 45,
+            qfelement!((-44) + (0)sqrt(3)) / 3,
+            qfelement!((-7) + (11)sqrt(99)) / 24,
+        ];
 
-        let val = qfelement!((1) + sqrt(5)) / 2;
-        dbg!(val.inverse());
-        // let val = qfelement!((-1) + (1)sqrt(5)) / 2;
-        // dbg!(phi * val);
+        for val in vals {
+            test_mul_inverse_value(val);
+        }
     }
 }
