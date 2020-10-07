@@ -39,8 +39,34 @@ pub struct QFElement<Int: MyPrimInt> {
 
 impl<Int: MyPrimInt + std::fmt::Display> std::fmt::Display for QFElement<Int> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // TODO handle special cases like a0 or a1 being 0, d being 1 and c being -1
-        write!(f, "({} + {}√{})/({})", self.a, self.b, self.field.c, self.d)
+        // Write numerator
+        if self.a.is_zero() && self.b.is_zero() {
+            write!(f, "0")?;
+        } else if self.a.is_zero() {
+            if self.field.c < Int::zero() {
+                write!(f, "{}√({})", self.b, self.field.c)?;
+            } else {
+                write!(f, "{}√{}", self.b, self.field.c)?;
+            }
+        } else if self.b.is_zero() {
+            write!(f, "{}", self.a)?;
+        } else {
+            if self.d != Int::one() {
+                write!(f, "(")?;
+            }
+            if self.field.c < Int::zero() {
+                write!(f, "{} + {}√({})", self.a, self.b, self.field.c)?;
+            } else {
+                write!(f, "{} + {}√{}", self.a, self.b, self.field.c)?;
+            }
+            if self.d != Int::one() {
+                write!(f, ")")?;
+            }
+        }
+        if !self.d.is_one() {
+            write!(f, " / {}", self.d)?;
+        }
+        Ok(())
     }
 }
 
@@ -269,7 +295,6 @@ mod tests {
     fn test_mul_inverse_value<Int: MyPrimInt>(val: QFElement<Int>) {
         assert_eq!(val.inverse().inverse(), val);
         assert_eq!(val * val.inverse(), QFElement::from_parts(Int::one(), Int::zero(), Int::one(), val.field));
-        
     }
 
     #[test]
@@ -278,9 +303,11 @@ mod tests {
             qfelement!((10i64) + (-1022)sqrt(76)) / 45,
             qfelement!((-44) + (0)sqrt(3)) / 3,
             qfelement!((-7) + (11)sqrt(99)) / 24,
+            qfelement!((0) + (2)sqrt(-94)) / 11,
         ];
 
         for val in vals {
+            println!("({})^-1 = {}", val, val.inverse());
             test_mul_inverse_value(val);
         }
     }
