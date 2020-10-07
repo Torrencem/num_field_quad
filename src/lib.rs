@@ -275,7 +275,7 @@ mod tests {
     #[test]
     fn test_mul_inverse() {
         let vals = vec![
-            qfelement!((10) + (-1022)sqrt(76)) / 45,
+            qfelement!((10i64) + (-1022)sqrt(76)) / 45,
             qfelement!((-44) + (0)sqrt(3)) / 3,
             qfelement!((-7) + (11)sqrt(99)) / 24,
         ];
