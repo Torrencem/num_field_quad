@@ -6,29 +6,23 @@ extern crate derive_more;
 mod utils;
 
 use utils::*;
-use num_traits::PrimInt;
-
-pub trait MyPrimInt: PrimInt + std::ops::AddAssign + std::ops::SubAssign + std::fmt::Debug + std::ops::Neg<Output=Self> { }
-impl<T: PrimInt + std::ops::AddAssign + std::ops::SubAssign + std::fmt::Debug + std::ops::Neg<Output=Self>> MyPrimInt for T { }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct QuadraticField<Int: MyPrimInt> {
+pub struct QuadraticField<Int: EuclideanDomain> {
     pub c: Int,
 }
 
-impl<Int: MyPrimInt> QuadraticField<Int> {
-    // Returns None if c is a perfect square
-    pub fn from_c(c: Int) -> Option<QuadraticField<Int>> {
-        if c >= Int::zero() && utils::is_perfect_square(c).is_some() {
-            None
-        } else {
-            Some(QuadraticField { c })
-        }
+impl<Int: EuclideanDomain> QuadraticField<Int> {
+    // Assumes that c is not a perfect square
+    pub fn from_c(c: Int) -> QuadraticField<Int> {
+        // TODO: Specialization: c is a perfect square check
+
+        QuadraticField { c }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct QFElement<Int: MyPrimInt> {
+#[derive(Debug, Clone, Copy)]
+pub struct QFElement<Int: EuclideanDomain> {
     // The standard representation of the element
     a: Int,
     b: Int,
@@ -37,24 +31,34 @@ pub struct QFElement<Int: MyPrimInt> {
     field: QuadraticField<Int>,
 }
 
-impl<Int: MyPrimInt + std::fmt::Display> std::fmt::Display for QFElement<Int> {
+impl<Int: EuclideanDomain> PartialEq for QFElement<Int> {
+    fn eq(&self, other: &Self) -> bool {
+        assert!(self.field == other.field);
+        self.a.clone() * other.d.clone() == other.a.clone() * self.d.clone()
+            && self.b.clone() * other.d.clone() == other.b.clone() * self.d.clone()
+    }
+}
+
+impl<Int: EuclideanDomain> Eq for QFElement<Int> { }
+
+impl<Int: EuclideanDomain + std::fmt::Display> std::fmt::Display for QFElement<Int> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Write numerator
-        if self.a.is_zero() && self.b.is_zero() {
+        if self.a == Int::zero() && self.b == Int::zero() {
             write!(f, "0")?;
-        } else if self.a.is_zero() {
-            if self.field.c < Int::zero() {
+        } else if self.a == Int::zero() {
+            if let Some(true) = self.field.c.is_negative() {
                 write!(f, "{}√({})", self.b, self.field.c)?;
             } else {
                 write!(f, "{}√{}", self.b, self.field.c)?;
             }
-        } else if self.b.is_zero() {
+        } else if self.b == Int::zero() {
             write!(f, "{}", self.a)?;
         } else {
             if self.d != Int::one() {
                 write!(f, "(")?;
             }
-            if self.field.c < Int::zero() {
+            if let Some(true) = self.field.c.is_negative() {
                 write!(f, "{} + {}√({})", self.a, self.b, self.field.c)?;
             } else {
                 write!(f, "{} + {}√{}", self.a, self.b, self.field.c)?;
@@ -63,14 +67,14 @@ impl<Int: MyPrimInt + std::fmt::Display> std::fmt::Display for QFElement<Int> {
                 write!(f, ")")?;
             }
         }
-        if !self.d.is_one() {
+        if self.d != Int::one() {
             write!(f, " / {}", self.d)?;
         }
         Ok(())
     }
 }
 
-impl<Int: MyPrimInt> QFElement<Int> {
+impl<Int: EuclideanDomain> QFElement<Int> {
     pub fn from_integer(int: Int, field: QuadraticField<Int>) -> QFElement<Int> {
         QFElement {
             a: int,
@@ -98,40 +102,31 @@ impl<Int: MyPrimInt> QFElement<Int> {
     pub fn is_rational(&self) -> bool {
         self.b.is_zero()
     }
-    
-    // Get the standard representation as defined in section 4.2.2.
-    pub fn standard_representation(&self) -> (Int, Int, Int) {
-        (self.a, self.b, self.d)
-    }
 
     // Find the multiplicative inverse of this element
     pub fn inverse(&self) -> Self {
-        let my_poly = QuadPoly { a: Int::zero(), b: self.a, c: self.b };
-        let t = QuadPoly { a: Int::one(), b: Int::zero(), c: self.field.c };
+        let my_poly = QuadPoly { a: Int::zero(), b: self.a.clone(), c: self.b.clone() };
+        let t = QuadPoly { a: Int::one(), b: Int::zero(), c: self.field.c.clone() };
         let (_v, u, gcd) = poly_extended_gcd(t, my_poly);
-        if gcd.degree() != 0 {
-            dbg!(t);
-            dbg!(my_poly);
-            dbg!(gcd);
-        }
         assert!(gcd.degree() == 0);
-        let tmp1 = QFElement {a: u.b * self.d, b: u.c * self.d, d: Int::one(), field: self.field};
-        let tmp2 = *self * tmp1;
-        assert_eq!(tmp2.b, Int::zero());
+
+        let tmp1 = QFElement {a: u.b * self.d.clone(), b: u.c * self.d.clone(), d: Int::one(), field: self.field.clone()};
+        let tmp2 = self.clone() * tmp1.clone();
+
         QFElement {
             a: tmp1.a,
             b: tmp1.b,
             d: tmp2.a / tmp2.d,
-            field: self.field,
+            field: self.field.clone(),
         }.reduce()
     }
 
     pub fn reduce(mut self) -> Self {
-        let g = gcd(self.a, gcd(self.b, self.d));
-        self.a = self.a / g;
-        self.b = self.b / g;
-        self.d = self.d / g;
-        if self.d < Int::zero() {
+        let g = gcd(self.a.clone(), gcd(self.b.clone(), self.d.clone()));
+        self.a = self.a.clone() / g.clone();
+        self.b = self.b.clone() / g.clone();
+        self.d = self.d.clone() / g.clone();
+        if let Some(true) = self.d.is_negative() {
             self.a = -self.a;
             self.b = -self.b;
             self.d = -self.d;
@@ -140,79 +135,79 @@ impl<Int: MyPrimInt> QFElement<Int> {
     }
 }
 
-impl<Int: MyPrimInt> std::ops::Add for QFElement<Int> {
+impl<Int: EuclideanDomain> std::ops::Add for QFElement<Int> {
     type Output = QFElement<Int>;
 
     fn add(self, other: QFElement<Int>) -> Self::Output {
         assert!(self.field == other.field);
-        let new_d = lcm(self.d, other.d);
+        let new_d = lcm(self.d.clone(), other.d.clone());
         QFElement {
-            a: self.a * new_d / self.d + other.a * new_d / other.d,
-            b: self.b * new_d / self.d + other.b * new_d / other.d,
+            a: self.a.clone() * new_d.clone() / self.d.clone() + other.a * new_d.clone() / other.d.clone(),
+            b: self.b.clone() * new_d.clone() / self.d.clone() + other.b.clone() * new_d.clone() / other.d.clone(),
             d: new_d,
             field: self.field,
         }
     }
 }
 
-impl<Int: MyPrimInt> std::ops::Sub for QFElement<Int> {
+impl<Int: EuclideanDomain> std::ops::Sub for QFElement<Int> {
     type Output = QFElement<Int>;
 
     fn sub(self, other: QFElement<Int>) -> Self::Output {
         assert!(self.field == other.field);
-        let new_d = lcm(self.d, other.d);
+        let new_d = lcm(self.d.clone(), other.d.clone());
         QFElement {
-            a: self.a * new_d / self.d - other.a * new_d / other.d,
-            b: self.b * new_d / self.d - other.b * new_d / other.d,
-            d: new_d,
+            a: self.a.clone() * new_d.clone() / self.d.clone() - other.a.clone() * new_d.clone() / other.d.clone(),
+            b: self.b.clone() * new_d.clone() / self.d.clone() - other.b.clone() * new_d.clone() / other.d.clone(),
+            d: new_d.clone(),
             field: self.field,
         }
     }
 }
 
-impl<Int: MyPrimInt> std::ops::Mul for QFElement<Int> {
+impl<Int: EuclideanDomain> std::ops::Mul for QFElement<Int> {
     type Output = QFElement<Int>;
 
     fn mul(self, other: QFElement<Int>) -> Self::Output {
         assert!(self.field == other.field);
         QFElement {
-            a: self.a * other.a + self.b * other.b * self.field.c,
-            b: self.a * other.b + self.b * other.a,
+            a: self.a.clone() * other.a.clone() + self.b.clone() * other.b.clone() * self.field.c.clone(),
+            b: self.a.clone() * other.b.clone() + self.b.clone() * other.a,
             d: self.d * other.d,
-            field: self.field,
+            field: self.field.clone(),
         }.reduce()
     }
 }
 
-impl<Int: MyPrimInt> std::ops::Add<Int> for QFElement<Int> {
+impl<Int: EuclideanDomain> std::ops::Add<Int> for QFElement<Int> {
     type Output = QFElement<Int>;
 
     fn add(mut self, rhs: Int) -> Self::Output {
-        self.a = self.a + self.d * rhs;
+        self.a = self.a.clone() + self.d.clone() * rhs.clone();
         self
     }
 }
 
-impl<Int: MyPrimInt> std::ops::Sub<Int> for QFElement<Int> {
+impl<Int: EuclideanDomain> std::ops::Sub<Int> for QFElement<Int> {
     type Output = QFElement<Int>;
 
     fn sub(mut self, rhs: Int) -> Self::Output {
-        self.a = self.a - self.d * rhs;
+        self.a = self.a.clone() - self.d.clone() * rhs;
         self
     }
 }
 
-impl<Int: MyPrimInt> std::ops::Mul<Int> for QFElement<Int> {
+impl<Int: EuclideanDomain> std::ops::Mul<Int> for QFElement<Int> {
     type Output = QFElement<Int>;
 
     fn mul(mut self, rhs: Int) -> Self::Output {
-        self.a = self.a * rhs;
+        self.a = self.a * rhs.clone();
         self.b = self.b * rhs;
         self
     }
 }
 
-impl<Int: MyPrimInt> std::ops::Div<Int> for QFElement<Int> {
+impl<Int: EuclideanDomain> std::ops::Div<Int> for QFElement<Int> {
     type Output = QFElement<Int>;
 
     fn div(mut self, rhs: Int) -> Self::Output {
@@ -221,13 +216,12 @@ impl<Int: MyPrimInt> std::ops::Div<Int> for QFElement<Int> {
     }
 }
 
-impl<Int: MyPrimInt> PartialEq<Int> for QFElement<Int> {
+impl<Int: EuclideanDomain> PartialEq<Int> for QFElement<Int> {
     fn eq(&self, other: &Int) -> bool {
-        self.b.is_zero() && self.a / self.d == *other
+        self.b.is_zero() && self.a.clone() / self.d.clone() == *other
     }
 }
 
-// TODO: This probably shouldn't use unwrap()
 #[macro_export]
 macro_rules! qfelement {
     (($a:expr) + ($b:expr)i @($c:expr)) => ({
@@ -237,16 +231,16 @@ macro_rules! qfelement {
         QFElement::from_parts($a, 0, 1, $c)
     });
     (($a:expr) + ($b:expr)sqrt($c:expr)) => ({
-        QFElement::from_parts($a, $b, 1, QuadraticField::from_c($c).unwrap())
+        QFElement::from_parts($a, $b, 1, QuadraticField::from_c($c))
     });
     (($a:expr) + sqrt($c:expr)) => ({
-        QFElement::from_parts($a, 1, 1, QuadraticField::from_c($c).unwrap())
+        QFElement::from_parts($a, 1, 1, QuadraticField::from_c($c))
     });
     (($a:expr)sqrt($c:expr)) => ({
-        QFElement::from_parts(0, $a, 1, QuadraticField::from_c($c).unwrap())
+        QFElement::from_parts(0, $a, 1, QuadraticField::from_c($c))
     });
     (sqrt($c:expr)) => ({
-        QFElement::from_parts(0, 1, 1, QuadraticField::from_c($c).unwrap())
+        QFElement::from_parts(0, 1, 1, QuadraticField::from_c($c))
     });
 }
 
@@ -257,7 +251,7 @@ mod tests {
 
     #[test]
     fn test_macro_uses() {
-        let qi = QuadraticField::from_c(-1).unwrap();
+        let qi = QuadraticField::from_c(-1);
         
         // 5 + 6i
         let val = qfelement!((5) + (6)i @ (qi));
@@ -292,9 +286,9 @@ mod tests {
         assert!(phi * phi - phi - 1 == 0);
     }
 
-    fn test_mul_inverse_value<Int: MyPrimInt>(val: QFElement<Int>) {
+    fn test_mul_inverse_value<Int: EuclideanDomain + std::fmt::Debug>(val: QFElement<Int>) {
         assert_eq!(val.inverse().inverse(), val);
-        assert_eq!(val * val.inverse(), QFElement::from_parts(Int::one(), Int::zero(), Int::one(), val.field));
+        assert_eq!(val.clone() * val.clone().inverse(), QFElement::from_parts(Int::one(), Int::zero(), Int::one(), val.field));
     }
 
     #[test]
@@ -304,6 +298,7 @@ mod tests {
             qfelement!((-44) + (0)sqrt(3)) / 3,
             qfelement!((-7) + (11)sqrt(99)) / 24,
             qfelement!((0) + (2)sqrt(-94)) / 11,
+            qfelement!((5) + (0)sqrt(-11)),
         ];
 
         for val in vals {
