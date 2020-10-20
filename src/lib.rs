@@ -5,7 +5,7 @@ extern crate derive_more;
 
 mod utils;
 
-use utils::*;
+pub use utils::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct QuadraticField<Int: EuclideanDomain> {
@@ -242,6 +242,27 @@ macro_rules! qfelement {
     (sqrt($c:expr)) => ({
         QFElement::from_parts(0, 1, 1, QuadraticField::from_c($c))
     });
+}
+
+/// Returns the critical points of the quotient of two quadratic polynomials in their field of
+/// definition. Uses https://www.wolframalpha.com/input/?i=d%2Fdx+%28%28ax%5E2+%2B+bx+%2B+c%29+%2F+%28dx%5E2+%2B+ex+%2B+f%29%29+%3D+0
+pub fn critical_points<Int: EuclideanDomain>(a_poly: QuadPoly<Int>, b_poly: QuadPoly<Int>) -> (QFElement<Int>, QFElement<Int>) {
+    let two = Int::one() + Int::one();
+    let four = two.clone() + two.clone();
+    let a = a_poly.a;
+    let b = a_poly.b;
+    let c = a_poly.c;
+    let d = b_poly.a;
+    let e = b_poly.b;
+    let f = b_poly.c;
+    // Everything under the square root sign
+    let discr = (two.clone() * a.clone() * f.clone() - two.clone() * c.clone() * d.clone()).pow(2) - four.clone() * (e.clone() * a.clone() - b.clone() * d.clone()) * (b.clone() * f.clone() - e.clone() * c.clone());
+    let rest_of_numerator = -two.clone() * a.clone() * f.clone() + two.clone() * c.clone() * d.clone();
+    let denom = two.clone() * (e.clone() * a.clone() - b.clone() * d.clone());
+
+    let x_1 = QFElement::from_parts(rest_of_numerator.clone(), Int::one(), denom.clone(), QuadraticField::from_c(discr.clone()));
+    let x_2 = QFElement::from_parts(rest_of_numerator.clone(), -Int::one(), denom.clone(), QuadraticField::from_c(discr));
+    (x_1, x_2)
 }
 
 

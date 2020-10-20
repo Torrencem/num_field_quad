@@ -224,6 +224,37 @@ pub fn poly_extended_gcd<Int: EuclideanDomain>(a_poly: QuadPoly<Int>, b_poly: Qu
     (s, t, r)
 }
 
+// Algorithm 3.3.7
+pub fn resultant<Int: EuclideanDomain>(a_poly: QuadPoly<Int>, b_poly: QuadPoly<Int>) -> Int {
+    assert!(a_poly.degree() >= b_poly.degree());
+    if a_poly.is_zero() || b_poly.is_zero() {
+        return Int::zero();
+    }
+    let a = a_poly.cont();
+    let b = b_poly.cont();
+    let mut a_poly = a_poly.clone() / a.clone();
+    let mut b_poly = b_poly.clone() / b.clone();
+    let mut g = Int::one();
+    let mut h = Int::one();
+    let mut s = Int::one();
+    let t = a.pow(b_poly.degree() as u32) * b.pow(a_poly.degree() as u32);
+    if a_poly.degree() % 2 == 1 && b_poly.degree() % 2 == 1 {
+        s = -s;
+    }
+    loop {
+        let delta = a_poly.degree() - b_poly.degree();
+        let (_q, r) = poly_pseudo_div(a_poly.clone(), b_poly.clone());
+        a_poly = b_poly;
+        b_poly = r / (g.clone() * h.clone().pow(delta as u32));
+        g = a_poly.lc();
+        h = h.clone().pow(1 - delta as u32) * g.clone().pow(delta as u32);
+        if b_poly.degree() == 0 {
+            h = h.clone().pow(1 - a_poly.degree() as u32) * b_poly.lc().pow(a_poly.degree() as u32);
+            return s * t * h;
+        }
+    }
+}
+
 lazy_static! {
     // Precomputations 1.7.2
     static ref Q11: [bool; 11] = {
@@ -257,4 +288,16 @@ lazy_static! {
         }
         table
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resultant() {
+        let a = QuadPoly { a: 1i32, b: 10, c: -15 };
+        let b = QuadPoly { a: -2i32, b: 5, c: 10 };
+        assert_eq!(resultant(a, b), -3975);
+    }
 }
