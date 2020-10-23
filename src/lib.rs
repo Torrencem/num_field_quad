@@ -1,7 +1,11 @@
 
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate alga_derive;
 extern crate derive_more;
+
+use alga::general::{Identity, Additive, TwoSidedInverse, AbstractMagma, Multiplicative};
 
 mod utils;
 
@@ -150,6 +154,13 @@ impl<Int: EuclideanDomain> std::ops::Add for QFElement<Int> {
     }
 }
 
+impl<Int: EuclideanDomain> std::ops::AddAssign for QFElement<Int> {
+    fn add_assign(&mut self, rhs: Self) {
+        assert!(self.field == rhs.field);
+        *self = self.clone() + rhs;
+    }
+}
+
 impl<Int: EuclideanDomain> std::ops::Sub for QFElement<Int> {
     type Output = QFElement<Int>;
 
@@ -165,6 +176,13 @@ impl<Int: EuclideanDomain> std::ops::Sub for QFElement<Int> {
     }
 }
 
+impl<Int: EuclideanDomain> std::ops::SubAssign for QFElement<Int> {
+    fn sub_assign(&mut self, rhs: Self) {
+        assert!(self.field == rhs.field);
+        *self = self.clone() - rhs;
+    }
+}
+
 impl<Int: EuclideanDomain> std::ops::Mul for QFElement<Int> {
     type Output = QFElement<Int>;
 
@@ -176,6 +194,15 @@ impl<Int: EuclideanDomain> std::ops::Mul for QFElement<Int> {
             d: self.d * other.d,
             field: self.field.clone(),
         }.reduce()
+    }
+}
+
+impl<Int: EuclideanDomain> std::ops::Div for QFElement<Int> {
+    type Output = QFElement<Int>;
+
+    fn div(self, other: QFElement<Int>) -> Self::Output {
+        assert!(self.field == other.field);
+        self * other.inverse()
     }
 }
 
@@ -265,6 +292,130 @@ pub fn critical_points<Int: EuclideanDomain>(a_poly: QuadPoly<Int>, b_poly: Quad
     (x_1, x_2)
 }
 
+use derive_more::{Add, Sub, AddAssign, SubAssign};
+
+#[derive(Copy, Clone, Debug, PartialEq, Alga, Add, AddAssign, Sub, SubAssign)]
+#[alga_traits(Ring(Additive, Multiplicative), Where = "Int: EuclideanDomain")]
+pub struct QiElement<Int: EuclideanDomain> {
+    inner: QFElement<Int>,
+}
+
+// derive_more generates bizzare bounds for these impls, so we do them manually
+impl<Int: EuclideanDomain> std::ops::Mul for QiElement<Int> {
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        QiElement { inner: self.inner * rhs.inner }
+    }
+}
+
+impl<Int: EuclideanDomain> std::ops::MulAssign for QiElement<Int> {
+    fn mul_assign(&mut self, rhs: Self) {
+        *self = QiElement { inner: self.inner.clone() * rhs.inner };
+    }
+}
+
+impl<Int: EuclideanDomain> Identity<Additive> for QiElement<Int> {
+    fn identity() -> Self {
+        QiElement {
+            inner: QFElement::from_parts(
+                Int::zero(), Int::zero(), Int::one(), QuadraticField::from_c(-Int::one())
+                       ),
+        }
+    }
+}
+
+impl<Int: EuclideanDomain> Identity<Multiplicative> for QiElement<Int> {
+    fn identity() -> Self {
+        QiElement {
+            inner: QFElement::from_parts(
+                Int::one(), Int::zero(), Int::one(), QuadraticField::from_c(-Int::one())
+                       ),
+        }
+    }
+}
+
+impl<Int: EuclideanDomain> num_traits::identities::Zero for QiElement<Int> {
+    fn zero() -> Self {
+        <Self as Identity<Additive>>::identity()
+    }
+
+    fn is_zero(&self) -> bool {
+        *self == <Self as Identity<Additive>>::identity()
+    }
+}
+
+impl<Int: EuclideanDomain> num_traits::identities::One for QiElement<Int> {
+    fn one() -> Self {
+        <Self as Identity<Multiplicative>>::identity()
+    }
+}
+
+impl<Int: EuclideanDomain> TwoSidedInverse<Additive> for QiElement<Int> {
+    fn two_sided_inverse(&self) -> Self {
+        QiElement {
+            inner: QFElement::from_parts(
+                Int::zero() - self.inner.a.clone(), Int::zero() - self.inner.b.clone(), self.inner.d.clone(), self.inner.field.clone()
+                       ),
+        }
+    }
+}
+
+impl<Int: EuclideanDomain> std::ops::Neg for QiElement<Int> {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        <Self as TwoSidedInverse<Additive>>::two_sided_inverse(&self)
+    }
+}
+
+impl<Int: EuclideanDomain> AbstractMagma<Additive> for QiElement<Int> {
+    fn operate(&self, right: &Self) -> Self {
+        QiElement {
+            inner: self.inner.clone() + right.inner.clone(),
+        }
+    }
+}
+
+impl<Int: EuclideanDomain> TwoSidedInverse<Multiplicative> for QiElement<Int> {
+    fn two_sided_inverse(&self) -> Self {
+        QiElement {
+            inner: <Self as Identity<Multiplicative>>::identity().inner / self.inner.clone()
+        }
+    }
+}
+
+impl<Int: EuclideanDomain> AbstractMagma<Multiplicative> for QiElement<Int> {
+    fn operate(&self, right: &Self) -> Self {
+        QiElement {
+            inner: self.inner.clone() * right.inner.clone(),
+        }
+    }
+}
+
+impl<Int: EuclideanDomain> std::ops::Div for QiElement<Int> {
+    type Output = Self;
+
+    fn div(self, rhs: QiElement<Int>) -> Self::Output {
+        QiElement { inner: self.inner / rhs.inner }
+    }
+}
+
+impl<Int: EuclideanDomain> std::ops::DivAssign for QiElement<Int> {
+    fn div_assign(&mut self, rhs: Self) {
+        *self = self.clone() / rhs;
+    }
+}
+
+impl<Int: EuclideanDomain> EuclideanDomain for QiElement<Int> {
+    fn modulus(self, _other: Self) -> Self {
+        todo!()
+    }
+
+    fn gcd(self, _other: Self) -> Self {
+        todo!()
+    }
+}
 
 #[cfg(test)]
 mod tests {
