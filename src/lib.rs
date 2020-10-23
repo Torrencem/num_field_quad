@@ -300,6 +300,15 @@ pub struct QiElement<Int: EuclideanDomain> {
     inner: QFElement<Int>,
 }
 
+impl<Int: EuclideanDomain> QiElement<Int> {
+    pub fn from(elt: QFElement<Int>) -> Self {
+        assert!(elt.field.c == -Int::one());
+        QiElement {
+            inner: elt,
+        }
+    }
+}
+
 // derive_more generates bizzare bounds for these impls, so we do them manually
 impl<Int: EuclideanDomain> std::ops::Mul for QiElement<Int> {
     type Output = Self;
