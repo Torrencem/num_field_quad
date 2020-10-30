@@ -7,7 +7,7 @@ use num_traits::PrimInt;
 
 use alga::general::{Ring, ClosedDiv};
 
-pub trait EuclideanDomain: Ring + ClosedDiv {
+pub trait EuclideanDomain: Ring + ClosedDiv + std::fmt::Debug {
     fn modulus(self, other: Self) -> Self;
     fn gcd(self, other: Self) -> Self;
     fn pow(mut self, mut power: u32) -> Self {
@@ -35,9 +35,16 @@ pub trait EuclideanDomain: Ring + ClosedDiv {
     fn is_negative(&self) -> Option<bool> {
         None
     }
+    
+    fn is_unit(&self) -> bool {
+        // Check if self has a mult. inverse in our ED
+        //              vvv  gives only the quotient
+        self.clone() * (Self::one() / self.clone()) == Self::one()
+    }
+
 }
 
-impl<T: Ring + ClosedDiv + PrimInt> EuclideanDomain for T {
+impl<T: Ring + ClosedDiv + PrimInt + std::fmt::Debug> EuclideanDomain for T {
     fn modulus(self, other: Self) -> Self {
         self % other
     }

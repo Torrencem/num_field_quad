@@ -7,6 +7,8 @@ extern crate derive_more;
 
 use alga::general::{Identity, Additive, TwoSidedInverse, AbstractMagma, Multiplicative};
 
+use num_traits::PrimInt;
+
 mod utils;
 
 pub use utils::*;
@@ -271,9 +273,16 @@ macro_rules! qfelement {
     });
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum CriticalPoints<Int: EuclideanDomain> {
+    None,
+    One(QFElement<Int>),
+    Two(QFElement<Int>, QFElement<Int>),
+}
+
 /// Returns the critical points of the quotient of two quadratic polynomials in their field of
-/// definition. Uses https://www.wolframalpha.com/input/?i=d%2Fdx+%28%28ax%5E2+%2B+bx+%2B+c%29+%2F+%28dx%5E2+%2B+ex+%2B+f%29%29+%3D+0
-pub fn critical_points<Int: EuclideanDomain>(a_poly: QuadPoly<Int>, b_poly: QuadPoly<Int>) -> (QFElement<Int>, QFElement<Int>) {
+/// definition. 
+pub fn critical_points<Int: EuclideanDomain>(a_poly: QuadPoly<Int>, b_poly: QuadPoly<Int>) -> CriticalPoints<Int> {
     let two = Int::one() + Int::one();
     let four = two.clone() + two.clone();
     let a = a_poly.a;
@@ -282,51 +291,73 @@ pub fn critical_points<Int: EuclideanDomain>(a_poly: QuadPoly<Int>, b_poly: Quad
     let d = b_poly.a;
     let e = b_poly.b;
     let f = b_poly.c;
+
+    if (a.clone() * e.clone() - b.clone() * d.clone()).is_zero() {
+        // Our equation is actually a line
+        let slope = two.clone() * (a.clone() * f.clone() - c.clone() * d.clone());
+        let constant = b.clone() * f.clone() - c.clone() * e.clone();
+        if slope.is_zero() {
+            return CriticalPoints::None;
+        }
+        let crit_pt = QFElement::from_parts(-constant, Int::zero(), slope, QuadraticField::from_c(Int::one()))
+            .reduce();
+
+        return CriticalPoints::One(crit_pt);
+    }
+
     // Everything under the square root sign
+    // Uses https://www.wolframalpha.com/input/?i=d%2Fdx+%28%28ax%5E2+%2B+bx+%2B+c%29+%2F+%28dx%5E2+%2B+ex+%2B+f%29%29+%3D+0
     let discr = (two.clone() * a.clone() * f.clone() - two.clone() * c.clone() * d.clone()).pow(2) - four.clone() * (e.clone() * a.clone() - b.clone() * d.clone()) * (b.clone() * f.clone() - e.clone() * c.clone());
     let rest_of_numerator = -two.clone() * a.clone() * f.clone() + two.clone() * c.clone() * d.clone();
     let denom = two.clone() * (e.clone() * a.clone() - b.clone() * d.clone());
 
-    let x_1 = QFElement::from_parts(rest_of_numerator.clone(), Int::one(), denom.clone(), QuadraticField::from_c(discr.clone()));
-    let x_2 = QFElement::from_parts(rest_of_numerator.clone(), -Int::one(), denom.clone(), QuadraticField::from_c(discr));
-    (x_1, x_2)
+    let x_1 = QFElement::from_parts(rest_of_numerator.clone(), Int::one(), denom.clone(), QuadraticField::from_c(discr.clone()))
+        .reduce();
+    let x_2 = QFElement::from_parts(rest_of_numerator.clone(), -Int::one(), denom.clone(), QuadraticField::from_c(discr))
+        .reduce();
+    CriticalPoints::Two(x_1, x_2)
 }
 
 use derive_more::{Add, Sub, AddAssign, SubAssign};
 
-#[derive(Copy, Clone, Debug, PartialEq, Alga, Add, AddAssign, Sub, SubAssign)]
+#[derive(Clone, Debug, PartialEq, Alga, Add, AddAssign, Sub, SubAssign)]
 #[alga_traits(Ring(Additive, Multiplicative), Where = "Int: EuclideanDomain")]
-pub struct QiElement<Int: EuclideanDomain> {
+pub struct ZiElement<Int: PrimInt + EuclideanDomain> {
     inner: QFElement<Int>,
 }
 
-impl<Int: EuclideanDomain> QiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt> ZiElement<Int> {
     pub fn from(elt: QFElement<Int>) -> Self {
         assert!(elt.field.c == -Int::one());
-        QiElement {
+        assert!(elt.d == Int::one());
+        ZiElement {
             inner: elt,
         }
+    }
+
+    pub fn is_zero(&self) -> bool {
+        self.inner.a == Int::zero() && self.inner.b == Int::zero()
     }
 }
 
 // derive_more generates bizzare bounds for these impls, so we do them manually
-impl<Int: EuclideanDomain> std::ops::Mul for QiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt> std::ops::Mul for ZiElement<Int> {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        QiElement { inner: self.inner * rhs.inner }
+        ZiElement { inner: self.inner * rhs.inner }
     }
 }
 
-impl<Int: EuclideanDomain> std::ops::MulAssign for QiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt> std::ops::MulAssign for ZiElement<Int> {
     fn mul_assign(&mut self, rhs: Self) {
-        *self = QiElement { inner: self.inner.clone() * rhs.inner };
+        *self = ZiElement { inner: self.inner.clone() * rhs.inner };
     }
 }
 
-impl<Int: EuclideanDomain> Identity<Additive> for QiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt> Identity<Additive> for ZiElement<Int> {
     fn identity() -> Self {
-        QiElement {
+        ZiElement {
             inner: QFElement::from_parts(
                 Int::zero(), Int::zero(), Int::one(), QuadraticField::from_c(-Int::one())
                        ),
@@ -334,9 +365,9 @@ impl<Int: EuclideanDomain> Identity<Additive> for QiElement<Int> {
     }
 }
 
-impl<Int: EuclideanDomain> Identity<Multiplicative> for QiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt> Identity<Multiplicative> for ZiElement<Int> {
     fn identity() -> Self {
-        QiElement {
+        ZiElement {
             inner: QFElement::from_parts(
                 Int::one(), Int::zero(), Int::one(), QuadraticField::from_c(-Int::one())
                        ),
@@ -344,7 +375,7 @@ impl<Int: EuclideanDomain> Identity<Multiplicative> for QiElement<Int> {
     }
 }
 
-impl<Int: EuclideanDomain> num_traits::identities::Zero for QiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt> num_traits::identities::Zero for ZiElement<Int> {
     fn zero() -> Self {
         <Self as Identity<Additive>>::identity()
     }
@@ -354,15 +385,15 @@ impl<Int: EuclideanDomain> num_traits::identities::Zero for QiElement<Int> {
     }
 }
 
-impl<Int: EuclideanDomain> num_traits::identities::One for QiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt> num_traits::identities::One for ZiElement<Int> {
     fn one() -> Self {
         <Self as Identity<Multiplicative>>::identity()
     }
 }
 
-impl<Int: EuclideanDomain> TwoSidedInverse<Additive> for QiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt> TwoSidedInverse<Additive> for ZiElement<Int> {
     fn two_sided_inverse(&self) -> Self {
-        QiElement {
+        ZiElement {
             inner: QFElement::from_parts(
                 Int::zero() - self.inner.a.clone(), Int::zero() - self.inner.b.clone(), self.inner.d.clone(), self.inner.field.clone()
                        ),
@@ -370,7 +401,8 @@ impl<Int: EuclideanDomain> TwoSidedInverse<Additive> for QiElement<Int> {
     }
 }
 
-impl<Int: EuclideanDomain> std::ops::Neg for QiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt> std::ops::Neg for ZiElement<Int> 
+{
     type Output = Self;
 
     fn neg(self) -> Self::Output {
@@ -378,51 +410,79 @@ impl<Int: EuclideanDomain> std::ops::Neg for QiElement<Int> {
     }
 }
 
-impl<Int: EuclideanDomain> AbstractMagma<Additive> for QiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt> AbstractMagma<Additive> for ZiElement<Int> {
     fn operate(&self, right: &Self) -> Self {
-        QiElement {
+        ZiElement {
             inner: self.inner.clone() + right.inner.clone(),
         }
     }
 }
 
-impl<Int: EuclideanDomain> TwoSidedInverse<Multiplicative> for QiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt> TwoSidedInverse<Multiplicative> for ZiElement<Int> {
     fn two_sided_inverse(&self) -> Self {
-        QiElement {
-            inner: <Self as Identity<Multiplicative>>::identity().inner / self.inner.clone()
-        }
+        <Self as Identity<Multiplicative>>::identity() / self.clone()
     }
 }
 
-impl<Int: EuclideanDomain> AbstractMagma<Multiplicative> for QiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt> AbstractMagma<Multiplicative> for ZiElement<Int> {
     fn operate(&self, right: &Self) -> Self {
-        QiElement {
+        ZiElement {
             inner: self.inner.clone() * right.inner.clone(),
         }
     }
 }
 
-impl<Int: EuclideanDomain> std::ops::Div for QiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt> std::ops::Div for ZiElement<Int> {
     type Output = Self;
 
-    fn div(self, rhs: QiElement<Int>) -> Self::Output {
-        QiElement { inner: self.inner / rhs.inner }
+    fn div(self, rhs: ZiElement<Int>) -> Self::Output {
+        let two = Int::from(2).unwrap();
+        let real_quotient = self.inner / rhs.inner;
+        // We want to round real_quotient to the nearest ZiElement.
+        let mut floor_a = real_quotient.a / real_quotient.d;
+        let mut floor_b = real_quotient.b / real_quotient.d;
+        // Check if we needed to round up not down
+        let mod_a = real_quotient.a.modulus(real_quotient.d);
+        let mod_b = real_quotient.a.modulus(real_quotient.d);
+        if real_quotient.a < Int::zero() {
+            if mod_a * two < real_quotient.d {
+                floor_a -= Int::one();
+            }
+        } else if mod_a * two >= real_quotient.d {
+            floor_a += Int::one();
+        }
+        if real_quotient.b < Int::zero() {
+            if mod_b * two < real_quotient.d {
+                floor_b -= Int::one();
+            }
+        } else if mod_b * two >= real_quotient.d {
+            floor_b += Int::one();
+        }
+        ZiElement {
+            inner: QFElement::from_parts(floor_a, floor_b, Int::one(), self.inner.field)
+        }
     }
 }
 
-impl<Int: EuclideanDomain> std::ops::DivAssign for QiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt> std::ops::DivAssign for ZiElement<Int> {
     fn div_assign(&mut self, rhs: Self) {
         *self = self.clone() / rhs;
     }
 }
 
-impl<Int: EuclideanDomain> EuclideanDomain for QiElement<Int> {
-    fn modulus(self, _other: Self) -> Self {
-        todo!()
+impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> EuclideanDomain for ZiElement<Int> {
+    fn modulus(self, other: Self) -> Self {
+        self.clone() - other.clone() * (self.clone() / other.clone())
     }
 
-    fn gcd(self, _other: Self) -> Self {
-        todo!()
+    fn gcd(mut self, mut other: Self) -> Self {
+        // Euclidean algorithm
+        // use is_unit
+        while !other.is_zero() {
+            self = self.clone().modulus(other.clone());
+            std::mem::swap(&mut self, &mut other);
+        }
+        self
     }
 }
 
@@ -486,5 +546,41 @@ mod tests {
             println!("({})^-1 = {}", val, val.inverse());
             test_mul_inverse_value(val);
         }
+    }
+
+    #[test]
+    fn test_critical_points() {
+        // x = var('x')
+        // K.<i> = NumberField(x^2 + 15900)
+        // P.<x, y> = ProjectiveSpace(K, 1)
+        //
+        // A = x^2 + 10*x*y - 15*y^2
+        // B = -2*x^2 + 5*x*y + 10*y^2
+        //
+        // Q = DynamicalSystem_projective([A, B])
+        let a_poly = QuadPoly { a: 1i32, b: 10, c: -15 };
+        let b_poly = QuadPoly { a: -2i32, b: 5, c: 10 };
+
+        let crit_pts = critical_points(a_poly, b_poly);
+
+        println!("critical points are: {:?}", crit_pts);
+        
+
+        let a_poly = QuadPoly { a: 0i32, b: 0, c: 1 };
+        let b_poly = QuadPoly { a: 1i32, b: 0, c: 0 };
+
+        let crit_pts = critical_points(a_poly, b_poly);
+
+        println!("critical points of (1/x^2) are: {:?}", crit_pts);
+    }
+
+    #[test]
+    fn test_gcd() {
+        let a = ZiElement::from(qfelement!((10) + (10)sqrt(-1)));
+        let b = ZiElement::from(qfelement!((5) + (5)sqrt(-1)));
+
+        println!("{}", (a.clone().modulus(b.clone())).inner);
+
+        println!("{}", gcd(a.clone(), b.clone()).inner);
     }
 }
