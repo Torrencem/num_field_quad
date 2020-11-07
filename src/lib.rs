@@ -477,7 +477,6 @@ impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> EuclideanDomain for ZiEle
 
     fn gcd(mut self, mut other: Self) -> Self {
         // Euclidean algorithm
-        // use is_unit
         while !other.is_zero() {
             self = self.clone().modulus(other.clone());
             std::mem::swap(&mut self, &mut other);
@@ -576,11 +575,9 @@ mod tests {
 
     #[test]
     fn test_gcd() {
-        let a = ZiElement::from(qfelement!((10) + (10)sqrt(-1)));
-        let b = ZiElement::from(qfelement!((5) + (5)sqrt(-1)));
+        let a = ZiElement::from(qfelement!((10) + (7)sqrt(-1)));
+        let b = ZiElement::from(qfelement!((10) + (5)sqrt(-1)));
 
-        println!("{}", (a.clone().modulus(b.clone())).inner);
-
-        println!("{}", gcd(a.clone(), b.clone()).inner);
+        println!("{}", gcd(a.clone() * b.clone(), a.clone()).inner);
     }
 }
