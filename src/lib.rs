@@ -1,17 +1,15 @@
 
-#[macro_use]
 extern crate lazy_static;
 #[macro_use]
 extern crate alga_derive;
 extern crate derive_more;
+extern crate polynomial;
 
 use alga::general::{Identity, Additive, TwoSidedInverse, AbstractMagma, Multiplicative};
 
 use num_traits::PrimInt;
 
-mod utils;
-
-pub use utils::*;
+use polynomial::{EuclideanDomain, Polynomial, extended_gcd, gcd, lcm};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct QuadraticField<Int: EuclideanDomain> {
@@ -28,7 +26,7 @@ impl<Int: EuclideanDomain> QuadraticField<Int> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct QFElement<Int: EuclideanDomain> {
+pub struct QFElement<Int: EuclideanDomain + Eq> {
     // The standard representation of the element
     a: Int,
     b: Int,
@@ -37,7 +35,7 @@ pub struct QFElement<Int: EuclideanDomain> {
     field: QuadraticField<Int>,
 }
 
-impl<Int: EuclideanDomain> PartialEq for QFElement<Int> {
+impl<Int: EuclideanDomain + Eq> PartialEq for QFElement<Int> {
     fn eq(&self, other: &Self) -> bool {
         assert!(self.field == other.field);
         self.a.clone() * other.d.clone() == other.a.clone() * self.d.clone()
@@ -45,9 +43,9 @@ impl<Int: EuclideanDomain> PartialEq for QFElement<Int> {
     }
 }
 
-impl<Int: EuclideanDomain> Eq for QFElement<Int> { }
+impl<Int: EuclideanDomain + Eq> Eq for QFElement<Int> { }
 
-impl<Int: EuclideanDomain + std::fmt::Display> std::fmt::Display for QFElement<Int> {
+impl<Int: EuclideanDomain + Eq + std::fmt::Display> std::fmt::Display for QFElement<Int> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Write numerator
         if self.a == Int::zero() && self.b == Int::zero() {
@@ -80,7 +78,7 @@ impl<Int: EuclideanDomain + std::fmt::Display> std::fmt::Display for QFElement<I
     }
 }
 
-impl<Int: EuclideanDomain> QFElement<Int> {
+impl<Int: EuclideanDomain + Eq> QFElement<Int> {
     pub fn from_integer(int: Int, field: QuadraticField<Int>) -> QFElement<Int> {
         QFElement {
             a: int,
@@ -110,13 +108,16 @@ impl<Int: EuclideanDomain> QFElement<Int> {
     }
 
     // Find the multiplicative inverse of this element
-    pub fn inverse(&self) -> Self {
-        let my_poly = QuadPoly { a: Int::zero(), b: self.a.clone(), c: self.b.clone() };
-        let t = QuadPoly { a: Int::one(), b: Int::zero(), c: self.field.c.clone() };
-        let (_v, u, gcd) = poly_extended_gcd(t, my_poly);
+    pub fn inverse(&self) -> Self
+    where Int: std::fmt::Debug {
+        let my_poly = Polynomial::new(vec![self.b.clone(), self.a.clone()]);
+        let t = Polynomial::new(vec![self.field.c.clone(), Int::zero(), Int::one()]);
+        let (_v, u, gcd) = extended_gcd(t, my_poly);
         assert!(gcd.degree() == 0);
-
-        let tmp1 = QFElement {a: u.b * self.d.clone(), b: u.c * self.d.clone(), d: Int::one(), field: self.field.clone()};
+        
+        let b = u.data().get(1).cloned().unwrap_or(Int::zero());
+        let c = u.data().get(0).cloned().unwrap_or(Int::zero());
+        let tmp1 = QFElement {a: b * self.d.clone(), b: c * self.d.clone(), d: Int::one(), field: self.field.clone()};
         let tmp2 = self.clone() * tmp1.clone();
 
         QFElement {
@@ -141,7 +142,7 @@ impl<Int: EuclideanDomain> QFElement<Int> {
     }
 }
 
-impl<Int: EuclideanDomain> std::ops::Add for QFElement<Int> {
+impl<Int: EuclideanDomain + Eq> std::ops::Add for QFElement<Int> {
     type Output = QFElement<Int>;
 
     fn add(self, other: QFElement<Int>) -> Self::Output {
@@ -156,14 +157,14 @@ impl<Int: EuclideanDomain> std::ops::Add for QFElement<Int> {
     }
 }
 
-impl<Int: EuclideanDomain> std::ops::AddAssign for QFElement<Int> {
+impl<Int: EuclideanDomain + Eq> std::ops::AddAssign for QFElement<Int> {
     fn add_assign(&mut self, rhs: Self) {
         assert!(self.field == rhs.field);
         *self = self.clone() + rhs;
     }
 }
 
-impl<Int: EuclideanDomain> std::ops::Sub for QFElement<Int> {
+impl<Int: EuclideanDomain + Eq> std::ops::Sub for QFElement<Int> {
     type Output = QFElement<Int>;
 
     fn sub(self, other: QFElement<Int>) -> Self::Output {
@@ -178,14 +179,14 @@ impl<Int: EuclideanDomain> std::ops::Sub for QFElement<Int> {
     }
 }
 
-impl<Int: EuclideanDomain> std::ops::SubAssign for QFElement<Int> {
+impl<Int: EuclideanDomain + Eq> std::ops::SubAssign for QFElement<Int> {
     fn sub_assign(&mut self, rhs: Self) {
         assert!(self.field == rhs.field);
         *self = self.clone() - rhs;
     }
 }
 
-impl<Int: EuclideanDomain> std::ops::Mul for QFElement<Int> {
+impl<Int: EuclideanDomain + Eq> std::ops::Mul for QFElement<Int> {
     type Output = QFElement<Int>;
 
     fn mul(self, other: QFElement<Int>) -> Self::Output {
@@ -199,7 +200,7 @@ impl<Int: EuclideanDomain> std::ops::Mul for QFElement<Int> {
     }
 }
 
-impl<Int: EuclideanDomain> std::ops::Div for QFElement<Int> {
+impl<Int: EuclideanDomain + Eq + std::fmt::Debug> std::ops::Div for QFElement<Int> {
     type Output = QFElement<Int>;
 
     fn div(self, other: QFElement<Int>) -> Self::Output {
@@ -208,7 +209,7 @@ impl<Int: EuclideanDomain> std::ops::Div for QFElement<Int> {
     }
 }
 
-impl<Int: EuclideanDomain> std::ops::Add<Int> for QFElement<Int> {
+impl<Int: EuclideanDomain + Eq> std::ops::Add<Int> for QFElement<Int> {
     type Output = QFElement<Int>;
 
     fn add(mut self, rhs: Int) -> Self::Output {
@@ -217,7 +218,7 @@ impl<Int: EuclideanDomain> std::ops::Add<Int> for QFElement<Int> {
     }
 }
 
-impl<Int: EuclideanDomain> std::ops::Sub<Int> for QFElement<Int> {
+impl<Int: EuclideanDomain + Eq> std::ops::Sub<Int> for QFElement<Int> {
     type Output = QFElement<Int>;
 
     fn sub(mut self, rhs: Int) -> Self::Output {
@@ -226,7 +227,7 @@ impl<Int: EuclideanDomain> std::ops::Sub<Int> for QFElement<Int> {
     }
 }
 
-impl<Int: EuclideanDomain> std::ops::Mul<Int> for QFElement<Int> {
+impl<Int: EuclideanDomain + Eq> std::ops::Mul<Int> for QFElement<Int> {
     type Output = QFElement<Int>;
 
     fn mul(mut self, rhs: Int) -> Self::Output {
@@ -236,7 +237,7 @@ impl<Int: EuclideanDomain> std::ops::Mul<Int> for QFElement<Int> {
     }
 }
 
-impl<Int: EuclideanDomain> std::ops::Div<Int> for QFElement<Int> {
+impl<Int: EuclideanDomain + Eq> std::ops::Div<Int> for QFElement<Int> {
     type Output = QFElement<Int>;
 
     fn div(mut self, rhs: Int) -> Self::Output {
@@ -245,7 +246,7 @@ impl<Int: EuclideanDomain> std::ops::Div<Int> for QFElement<Int> {
     }
 }
 
-impl<Int: EuclideanDomain> PartialEq<Int> for QFElement<Int> {
+impl<Int: EuclideanDomain + Eq> PartialEq<Int> for QFElement<Int> {
     fn eq(&self, other: &Int) -> bool {
         self.b.is_zero() && self.a.clone() / self.d.clone() == *other
     }
@@ -273,8 +274,8 @@ macro_rules! qfelement {
     });
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum CriticalPoints<Int: EuclideanDomain> {
+#[derive(Debug, Clone)]
+pub enum CriticalPoints<Int: EuclideanDomain + Eq> {
     None,
     One(QFElement<Int>),
     Two(QFElement<Int>, QFElement<Int>),
@@ -282,15 +283,15 @@ pub enum CriticalPoints<Int: EuclideanDomain> {
 
 /// Returns the critical points of the quotient of two quadratic polynomials in their field of
 /// definition. 
-pub fn critical_points<Int: EuclideanDomain>(a_poly: QuadPoly<Int>, b_poly: QuadPoly<Int>) -> CriticalPoints<Int> {
+pub fn critical_points<Int: EuclideanDomain + Eq>(a_poly: Polynomial<Int>, b_poly: Polynomial<Int>) -> CriticalPoints<Int> {
     let two = Int::one() + Int::one();
     let four = two.clone() + two.clone();
-    let a = a_poly.a;
-    let b = a_poly.b;
-    let c = a_poly.c;
-    let d = b_poly.a;
-    let e = b_poly.b;
-    let f = b_poly.c;
+    let a = a_poly.data().get(2).cloned().unwrap_or(Int::zero());
+    let b = a_poly.data().get(1).cloned().unwrap_or(Int::zero());
+    let c = a_poly.data().get(0).cloned().unwrap_or(Int::zero());
+    let d = b_poly.data().get(2).cloned().unwrap_or(Int::zero());
+    let e = b_poly.data().get(1).cloned().unwrap_or(Int::zero());
+    let f = b_poly.data().get(0).cloned().unwrap_or(Int::zero());
 
     if (a.clone() * e.clone() - b.clone() * d.clone()).is_zero() {
         // Our equation is actually a line
@@ -322,11 +323,11 @@ use derive_more::{Add, Sub, AddAssign, SubAssign};
 
 #[derive(Clone, Debug, PartialEq, Alga, Add, AddAssign, Sub, SubAssign)]
 #[alga_traits(Ring(Additive, Multiplicative), Where = "Int: EuclideanDomain")]
-pub struct ZiElement<Int: PrimInt + EuclideanDomain> {
+pub struct ZiElement<Int: PrimInt + EuclideanDomain + std::fmt::Debug> {
     inner: QFElement<Int>,
 }
 
-impl<Int: EuclideanDomain + PrimInt> ZiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> ZiElement<Int> {
     pub fn from(elt: QFElement<Int>) -> Self {
         assert!(elt.field.c == -Int::one());
         assert!(elt.d == Int::one());
@@ -341,7 +342,7 @@ impl<Int: EuclideanDomain + PrimInt> ZiElement<Int> {
 }
 
 // derive_more generates bizzare bounds for these impls, so we do them manually
-impl<Int: EuclideanDomain + PrimInt> std::ops::Mul for ZiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> std::ops::Mul for ZiElement<Int> {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -349,13 +350,13 @@ impl<Int: EuclideanDomain + PrimInt> std::ops::Mul for ZiElement<Int> {
     }
 }
 
-impl<Int: EuclideanDomain + PrimInt> std::ops::MulAssign for ZiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> std::ops::MulAssign for ZiElement<Int> {
     fn mul_assign(&mut self, rhs: Self) {
         *self = ZiElement { inner: self.inner.clone() * rhs.inner };
     }
 }
 
-impl<Int: EuclideanDomain + PrimInt> Identity<Additive> for ZiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> Identity<Additive> for ZiElement<Int> {
     fn identity() -> Self {
         ZiElement {
             inner: QFElement::from_parts(
@@ -365,7 +366,7 @@ impl<Int: EuclideanDomain + PrimInt> Identity<Additive> for ZiElement<Int> {
     }
 }
 
-impl<Int: EuclideanDomain + PrimInt> Identity<Multiplicative> for ZiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> Identity<Multiplicative> for ZiElement<Int> {
     fn identity() -> Self {
         ZiElement {
             inner: QFElement::from_parts(
@@ -375,7 +376,7 @@ impl<Int: EuclideanDomain + PrimInt> Identity<Multiplicative> for ZiElement<Int>
     }
 }
 
-impl<Int: EuclideanDomain + PrimInt> num_traits::identities::Zero for ZiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> num_traits::identities::Zero for ZiElement<Int> {
     fn zero() -> Self {
         <Self as Identity<Additive>>::identity()
     }
@@ -385,13 +386,13 @@ impl<Int: EuclideanDomain + PrimInt> num_traits::identities::Zero for ZiElement<
     }
 }
 
-impl<Int: EuclideanDomain + PrimInt> num_traits::identities::One for ZiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> num_traits::identities::One for ZiElement<Int> {
     fn one() -> Self {
         <Self as Identity<Multiplicative>>::identity()
     }
 }
 
-impl<Int: EuclideanDomain + PrimInt> TwoSidedInverse<Additive> for ZiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> TwoSidedInverse<Additive> for ZiElement<Int> {
     fn two_sided_inverse(&self) -> Self {
         ZiElement {
             inner: QFElement::from_parts(
@@ -401,7 +402,7 @@ impl<Int: EuclideanDomain + PrimInt> TwoSidedInverse<Additive> for ZiElement<Int
     }
 }
 
-impl<Int: EuclideanDomain + PrimInt> std::ops::Neg for ZiElement<Int> 
+impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> std::ops::Neg for ZiElement<Int> 
 {
     type Output = Self;
 
@@ -410,7 +411,7 @@ impl<Int: EuclideanDomain + PrimInt> std::ops::Neg for ZiElement<Int>
     }
 }
 
-impl<Int: EuclideanDomain + PrimInt> AbstractMagma<Additive> for ZiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> AbstractMagma<Additive> for ZiElement<Int> {
     fn operate(&self, right: &Self) -> Self {
         ZiElement {
             inner: self.inner.clone() + right.inner.clone(),
@@ -418,13 +419,13 @@ impl<Int: EuclideanDomain + PrimInt> AbstractMagma<Additive> for ZiElement<Int> 
     }
 }
 
-impl<Int: EuclideanDomain + PrimInt> TwoSidedInverse<Multiplicative> for ZiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> TwoSidedInverse<Multiplicative> for ZiElement<Int> {
     fn two_sided_inverse(&self) -> Self {
         <Self as Identity<Multiplicative>>::identity() / self.clone()
     }
 }
 
-impl<Int: EuclideanDomain + PrimInt> AbstractMagma<Multiplicative> for ZiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> AbstractMagma<Multiplicative> for ZiElement<Int> {
     fn operate(&self, right: &Self) -> Self {
         ZiElement {
             inner: self.inner.clone() * right.inner.clone(),
@@ -432,7 +433,7 @@ impl<Int: EuclideanDomain + PrimInt> AbstractMagma<Multiplicative> for ZiElement
     }
 }
 
-impl<Int: EuclideanDomain + PrimInt> std::ops::Div for ZiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> std::ops::Div for ZiElement<Int> {
     type Output = Self;
 
     fn div(self, rhs: ZiElement<Int>) -> Self::Output {
@@ -464,7 +465,7 @@ impl<Int: EuclideanDomain + PrimInt> std::ops::Div for ZiElement<Int> {
     }
 }
 
-impl<Int: EuclideanDomain + PrimInt> std::ops::DivAssign for ZiElement<Int> {
+impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> std::ops::DivAssign for ZiElement<Int> {
     fn div_assign(&mut self, rhs: Self) {
         *self = self.clone() / rhs;
     }
@@ -526,7 +527,7 @@ mod tests {
         assert!(phi * phi - phi - 1 == 0);
     }
 
-    fn test_mul_inverse_value<Int: EuclideanDomain + std::fmt::Debug>(val: QFElement<Int>) {
+    fn test_mul_inverse_value<Int: EuclideanDomain + Eq + std::fmt::Debug>(val: QFElement<Int>) {
         assert_eq!(val.inverse().inverse(), val);
         assert_eq!(val.clone() * val.clone().inverse(), QFElement::from_parts(Int::one(), Int::zero(), Int::one(), val.field));
     }
@@ -557,16 +558,16 @@ mod tests {
         // B = -2*x^2 + 5*x*y + 10*y^2
         //
         // Q = DynamicalSystem_projective([A, B])
-        let a_poly = QuadPoly { a: 1i32, b: 10, c: -15 };
-        let b_poly = QuadPoly { a: -2i32, b: 5, c: 10 };
+        let a_poly = Polynomial::new(vec![-15i32, 10, 1]);
+        let b_poly = Polynomial::new(vec![10, 5, -2]);
 
         let crit_pts = critical_points(a_poly, b_poly);
 
         println!("critical points are: {:?}", crit_pts);
         
 
-        let a_poly = QuadPoly { a: 0i32, b: 0, c: 1 };
-        let b_poly = QuadPoly { a: 1i32, b: 0, c: 0 };
+        let a_poly = Polynomial::new(vec![1i32]);
+        let b_poly = Polynomial::new(vec![0, 0, 1]);
 
         let crit_pts = critical_points(a_poly, b_poly);
 

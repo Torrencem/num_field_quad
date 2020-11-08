@@ -7,71 +7,8 @@ use num_traits::PrimInt;
 
 use alga::general::{Ring, ClosedDiv};
 
-pub trait EuclideanDomain: Ring + ClosedDiv + std::fmt::Debug {
-    fn modulus(self, other: Self) -> Self;
-    fn gcd(self, other: Self) -> Self;
-    fn pow(mut self, mut power: u32) -> Self {
-        // https://en.wikipedia.org/wiki/Exponentiation_by_squaring
-        if power == 0 {
-            return Self::one();
-        }
-        let mut y = Self::one();
-        while power > 1 {
-            if power & 1 == 0 {
-                self = self.clone() * self.clone();
-                power >>= 1;
-            } else {
-                y = self.clone() * y;
-                self = self.clone() * self.clone();
-                power = (power - 1) >> 1;
-            }
-        }
-        self * y
-    }
-    // Optional: Helpful when displaying and debugging
-    fn is_positive(&self) -> Option<bool> {
-        None
-    }
-    fn is_negative(&self) -> Option<bool> {
-        None
-    }
-    
-    fn is_unit(&self) -> bool {
-        // Check if self has a mult. inverse in our ED
-        //              vvv  gives only the quotient
-        self.clone() * (Self::one() / self.clone()) == Self::one()
-    }
+// TODO: Move all of this into fork of Polynomial
 
-}
-
-impl<T: Ring + ClosedDiv + PrimInt + std::fmt::Debug> EuclideanDomain for T {
-    fn modulus(self, other: Self) -> Self {
-        self % other
-    }
-
-    fn gcd(mut self, mut b: Self) -> Self {
-        if self < b {
-            std::mem::swap(&mut self, &mut b);
-        }
-        while !b.is_zero() {
-            self = self.modulus(b);
-            std::mem::swap(&mut self, &mut b);
-        }
-        self
-    }
-
-    fn is_positive(&self) -> Option<bool> {
-        Some(self > &Self::zero())
-    }
-
-    fn is_negative(&self) -> Option<bool> {
-        Some(self < &Self::zero())
-    }
-}
-
-pub fn gcd<Int: EuclideanDomain>(a: Int, b: Int) -> Int {
-    a.gcd(b)
-}
 
 /// A general quadratic polynomial
 /// ax^2 + bx + c
@@ -155,15 +92,6 @@ impl<Int: EuclideanDomain> std::ops::Div<Int> for QuadPoly<Int> {
         self.b = self.b / rhs.clone();
         self.c = self.c / rhs.clone();
         self
-    }
-}
-
-pub fn lcm<Int: EuclideanDomain>(a: Int, b: Int) -> Int {
-    // quick optimization
-    if a == b {
-        a
-    } else {
-        a.clone() * b.clone() / gcd(a, b)
     }
 }
 
@@ -301,10 +229,4 @@ lazy_static! {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_resultant() {
-        let a = QuadPoly { a: 1i32, b: 10, c: -15 };
-        let b = QuadPoly { a: -2i32, b: 5, c: 10 };
-        assert_eq!(resultant(a, b), -3975);
-    }
 }
