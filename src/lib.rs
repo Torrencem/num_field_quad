@@ -28,11 +28,11 @@ impl<Int: EuclideanDomain> QuadraticField<Int> {
 #[derive(Debug, Clone, Copy)]
 pub struct QFElement<Int: EuclideanDomain + Eq> {
     // The standard representation of the element
-    a: Int,
-    b: Int,
-    d: Int,
+    pub a: Int,
+    pub b: Int,
+    pub d: Int,
     // The underlying field
-    field: QuadraticField<Int>,
+    pub field: QuadraticField<Int>,
 }
 
 impl<Int: EuclideanDomain + Eq> PartialEq for QFElement<Int> {
@@ -321,7 +321,7 @@ pub fn critical_points<Int: EuclideanDomain + Eq>(a_poly: Polynomial<Int>, b_pol
 
 use derive_more::{Add, Sub, AddAssign, SubAssign};
 
-#[derive(Clone, Debug, PartialEq, Alga, Add, AddAssign, Sub, SubAssign)]
+#[derive(Clone, Debug, PartialEq, Eq, Alga, Add, AddAssign, Sub, SubAssign)]
 #[alga_traits(Ring(Additive, Multiplicative), Where = "Int: EuclideanDomain")]
 pub struct ZiElement<Int: PrimInt + EuclideanDomain + std::fmt::Debug> {
     inner: QFElement<Int>,
@@ -483,6 +483,12 @@ impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> EuclideanDomain for ZiEle
             std::mem::swap(&mut self, &mut other);
         }
         self
+    }
+}
+
+impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> ZiElement<Int> {
+    pub fn reduce_mod(&self, p: Int) -> Int {
+        todo!("not implemented: reduce by {:?}", p)
     }
 }
 
