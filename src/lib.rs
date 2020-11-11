@@ -1,4 +1,5 @@
 
+#[macro_use]
 extern crate lazy_static;
 #[macro_use]
 extern crate alga_derive;
@@ -10,6 +11,9 @@ use alga::general::{Identity, Additive, TwoSidedInverse, AbstractMagma, Multipli
 use num_traits::PrimInt;
 
 use polynomial::{EuclideanDomain, Polynomial, extended_gcd, gcd, lcm};
+
+pub mod mod_p;
+use mod_p::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct QuadraticField<Int: EuclideanDomain> {
@@ -324,7 +328,7 @@ use derive_more::{Add, Sub, AddAssign, SubAssign};
 #[derive(Clone, Debug, PartialEq, Eq, Alga, Add, AddAssign, Sub, SubAssign)]
 #[alga_traits(Ring(Additive, Multiplicative), Where = "Int: EuclideanDomain")]
 pub struct ZiElement<Int: PrimInt + EuclideanDomain + std::fmt::Debug> {
-    inner: QFElement<Int>,
+    pub inner: QFElement<Int>,
 }
 
 impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> ZiElement<Int> {
@@ -336,8 +340,40 @@ impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> ZiElement<Int> {
         }
     }
 
+    pub fn from_parts(a: Int, b: Int) -> Self {
+        ZiElement::from(QFElement {
+            a, b,
+            field: QuadraticField::from_c(-Int::one()),
+            d: Int::one(),
+        })
+    }
+
     pub fn is_zero(&self) -> bool {
         self.inner.a == Int::zero() && self.inner.b == Int::zero()
+    }
+
+    pub fn square_root(&self) -> Option<ZiElement<Int>> {
+        // From formulae in https://de.wikipedia.org/wiki/Quadratwurzel#Definition
+        // For |z|
+        let z_norm_sq = self.inner.a * self.inner.a + self.inner.b + self.inner.b;
+        let z_norm = match is_perfect_square(z_norm_sq) {
+            Some(x) => x,
+            None => return None,
+        };
+
+        let a_sq = (z_norm + self.inner.a) / (Int::from(2).unwrap());
+        let a = match is_perfect_square(a_sq) {
+            Some(x) => x,
+            None => return None,
+        };
+
+        let b_sq = (z_norm - self.inner.a) / (Int::from(2).unwrap());
+        let b = match is_perfect_square(b_sq) {
+            Some(x) => x,
+            None => return None,
+        };
+
+        Some(ZiElement::from_parts(a, (if self.inner.b >= Int::zero() { Int::one() } else { -Int::one()}) * b))
     }
 }
 
@@ -487,8 +523,79 @@ impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> EuclideanDomain for ZiEle
 }
 
 impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> ZiElement<Int> {
-    pub fn reduce_mod(&self, p: Int) -> Int {
-        todo!("not implemented: reduce by {:?}", p)
+    pub fn reduce_mod(&self, p: u32) -> ModPElt {
+        let i = ModPElt { val: p as i64 - 1, p }.sqrt().unwrap();
+        let a = ModPElt { val: self.inner.a.to_i64().unwrap(), p };
+        let b = ModPElt { val: self.inner.b.to_i64().unwrap(), p };
+        a + b * i
+    }
+}
+
+lazy_static! {
+    // Precomputations 1.7.2
+    static ref Q11: [bool; 11] = {
+        let mut table: [bool; 11] = [false; 11];
+        for k in 0..=5 {
+            table[k * k % 11] = true;
+        }
+        table
+    };
+
+    static ref Q63: [bool; 63] = {
+        let mut table: [bool; 63] = [false; 63];
+        for k in 0..=31 {
+            table[k * k % 63] = true;
+        }
+        table
+    };
+
+    static ref Q64: [bool; 64] = {
+        let mut table: [bool; 64] = [false; 64];
+        for k in 0..=31 {
+            table[k * k % 64] = true;
+        }
+        table
+    };
+
+    static ref Q65: [bool; 65] = {
+        let mut table: [bool; 65] = [false; 65];
+        for k in 0..=32 {
+            table[k * k % 65] = true;
+        }
+        table
+    };
+}
+
+// Algorithm 1.7.1
+fn int_sqrt<Int: PrimInt>(val: Int) -> Int {
+    let mut x = val;
+    loop {
+        let y = (x + val / x) >> 2;
+        if y < x {
+            x = y;
+        } else {
+            return x;
+        }
+    }
+}
+
+pub fn is_perfect_square<Int: PrimInt>(val: Int) -> Option<Int> {
+    if Q64[(val % Int::from(64).unwrap()).to_usize().unwrap()] == false {
+        return None;
+    }
+    let r = val % Int::from(45045).unwrap();
+    if Q63[r.to_usize().unwrap() % 63] == false {
+        return None;
+    } else if Q65[r.to_usize().unwrap() % 65] == false {
+        return None;
+    } else if Q11[r.to_usize().unwrap() % 11] == false {
+        return None;
+    }
+    let q = int_sqrt(val);
+    if q * q != val {
+        None
+    } else {
+        Some(q)
     }
 }
 

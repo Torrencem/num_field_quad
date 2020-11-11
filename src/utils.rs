@@ -190,40 +190,6 @@ pub fn resultant<Int: EuclideanDomain>(a_poly: QuadPoly<Int>, b_poly: QuadPoly<I
     }
 }
 
-lazy_static! {
-    // Precomputations 1.7.2
-    static ref Q11: [bool; 11] = {
-        let mut table: [bool; 11] = [false; 11];
-        for k in 0..=5 {
-            table[k * k % 11] = true;
-        }
-        table
-    };
-
-    static ref Q63: [bool; 63] = {
-        let mut table: [bool; 63] = [false; 63];
-        for k in 0..=31 {
-            table[k * k % 63] = true;
-        }
-        table
-    };
-
-    static ref Q64: [bool; 64] = {
-        let mut table: [bool; 64] = [false; 64];
-        for k in 0..=31 {
-            table[k * k % 64] = true;
-        }
-        table
-    };
-
-    static ref Q65: [bool; 65] = {
-        let mut table: [bool; 65] = [false; 65];
-        for k in 0..=32 {
-            table[k * k % 65] = true;
-        }
-        table
-    };
-}
 
 #[cfg(test)]
 mod tests {
