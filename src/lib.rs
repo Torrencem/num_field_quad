@@ -524,6 +524,7 @@ impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> EuclideanDomain for ZiEle
 
 impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> ZiElement<Int> {
     pub fn reduce_mod(&self, p: u32) -> ModPElt {
+        dbg!(p);
         let i = ModPElt { val: p as i64 - 1, p }.sqrt().unwrap();
         let a = ModPElt { val: self.inner.a.to_i64().unwrap(), p };
         let b = ModPElt { val: self.inner.b.to_i64().unwrap(), p };

@@ -39,7 +39,7 @@ impl ModPElt {
     
     // Sourced roughly from https://rosettacode.org/wiki/Tonelli-Shanks_algorithm#Python
     pub fn sqrt(&self) -> Option<ModPElt> {
-        if self.legendre_symbol() == 1 {
+        if self.legendre_symbol() != 1 {
             return None;
         }
 
@@ -52,9 +52,9 @@ impl ModPElt {
         if s == 1 {
             return Some(self.pow((self.p + 1) / 4));
         }
-        let mut z = 0;
+        let mut z = (self.p as i64) - 1;
         for z_ in 2..self.p {
-            if self.p - 1 == (ModPElt { val: z, p: self.p }).legendre_symbol() as u32 {
+            if self.p - 1 == (ModPElt { val: z_ as i64, p: self.p }).legendre_symbol() as u32 {
                 z = z_ as i64;
                 break;
             }
@@ -68,7 +68,7 @@ impl ModPElt {
 
         while (t - One::one()) != Zero::zero() {
             t2 = t * t;
-            let mut i = 0;
+            let mut i = m - 1;
             for i_ in 1..m {
                 if t2 - One::one() == Zero::zero() {
                     i = i_;
@@ -305,6 +305,31 @@ impl EuclideanDomain for ModPElt {
         ModPElt {
             val: 1,
             p
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_misc_pow() {
+        let val = ModPElt { val: 2, p: 1000000 };
+        assert!(val.pow(4).val == 16);
+    }
+
+    #[test]
+    fn test_fp_sqrt() {
+        let mut ct = 0;
+        for x in [1023, 32, 1003, 329, 643, 1, 2, 0].iter() {
+            for p in [1591, 1513, 2345, 53252, 99199].iter() {
+                let val = ModPElt { val: *x, p: *p };
+                match val.sqrt() {
+                    Some(val2) => {ct += 1; assert_eq!(val2 * val2, val)},
+                    _ => {}
+                }
+            }
         }
     }
 }
