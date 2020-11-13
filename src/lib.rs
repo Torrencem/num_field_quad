@@ -364,12 +364,17 @@ impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> ZiElement<Int> {
         // From formulae in https://de.wikipedia.org/wiki/Quadratwurzel#Definition
         // For |z|
         let z_norm_sq = self.inner.a * self.inner.a + self.inner.b * self.inner.b;
+        dbg!(self.inner.a);
+        dbg!(self.inner.b);
+        dbg!(z_norm_sq);
+        assert!(z_norm_sq >= Int::zero());
         let z_norm = match is_perfect_square(z_norm_sq) {
             Some(x) => x,
             None => return None,
         };
 
         let a_sq = (z_norm + self.inner.a) / (Int::from(2).unwrap());
+        assert!(a_sq >= Int::zero());
         let a = match is_perfect_square(a_sq) {
             Some(x) => x,
             None => return None,
@@ -377,6 +382,7 @@ impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> ZiElement<Int> {
 
         let sgn_y = if self.inner.b >= Int::zero() { Int::one() } else { -Int::one()};
         let b_sq = (z_norm - self.inner.a) / (Int::from(2).unwrap());
+        assert!(b_sq >= Int::zero());
         let b = match is_perfect_square(b_sq) {
             Some(x) => x,
             None => return None,
@@ -612,6 +618,7 @@ fn int_sqrt(s: u64) -> u64 {
 }
 
 pub fn is_perfect_square<Int: PrimInt + std::fmt::Debug>(val: Int) -> Option<Int> {
+    assert!(val >= Int::zero());
     if Q64[(val % Int::from(64).unwrap()).to_usize().unwrap()] == false {
         return None;
     }
