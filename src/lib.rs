@@ -325,11 +325,19 @@ pub fn critical_points<Int: EuclideanDomain + Eq>(a_poly: Polynomial<Int>, b_pol
 
 use derive_more::{Add, Sub, AddAssign, SubAssign};
 
-#[derive(Clone, Debug, PartialEq, Eq, Alga, Add, AddAssign, Sub, SubAssign)]
+#[derive(Clone, Debug, Alga, Add, AddAssign, Sub, SubAssign)]
 #[alga_traits(Ring(Additive, Multiplicative), Where = "Int: EuclideanDomain")]
 pub struct ZiElement<Int: PrimInt + EuclideanDomain + std::fmt::Debug> {
     pub inner: QFElement<Int>,
 }
+
+impl<Int: PrimInt + EuclideanDomain + std::fmt::Debug> PartialEq for ZiElement<Int> {
+    fn eq(&self, other: &ZiElement<Int>) -> bool {
+        self.inner.a == other.inner.a && self.inner.b == other.inner.b
+    }
+}
+
+impl<Int: PrimInt + EuclideanDomain + std::fmt::Debug> Eq for ZiElement<Int> { }
 
 impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> ZiElement<Int> {
     pub fn from(elt: QFElement<Int>) -> Self {
@@ -355,7 +363,7 @@ impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> ZiElement<Int> {
     pub fn square_root(&self) -> Option<ZiElement<Int>> {
         // From formulae in https://de.wikipedia.org/wiki/Quadratwurzel#Definition
         // For |z|
-        let z_norm_sq = self.inner.a * self.inner.a + self.inner.b + self.inner.b;
+        let z_norm_sq = self.inner.a * self.inner.a + self.inner.b * self.inner.b;
         let z_norm = match is_perfect_square(z_norm_sq) {
             Some(x) => x,
             None => return None,
@@ -367,13 +375,14 @@ impl<Int: EuclideanDomain + PrimInt + std::fmt::Debug> ZiElement<Int> {
             None => return None,
         };
 
+        let sgn_y = if self.inner.b >= Int::zero() { Int::one() } else { -Int::one()};
         let b_sq = (z_norm - self.inner.a) / (Int::from(2).unwrap());
         let b = match is_perfect_square(b_sq) {
             Some(x) => x,
             None => return None,
-        };
-
-        Some(ZiElement::from_parts(a, (if self.inner.b >= Int::zero() { Int::one() } else { -Int::one()}) * b))
+        } * sgn_y;
+        
+        Some(ZiElement::from_parts(a, b))
     }
 }
 
@@ -567,19 +576,42 @@ lazy_static! {
 }
 
 // Algorithm 1.7.1
-fn int_sqrt<Int: PrimInt>(val: Int) -> Int {
-    let mut x = val;
-    loop {
-        let y = (x + val / x) >> 2;
-        if y < x {
-            x = y;
-        } else {
-            return x;
-        }
-    }
+// Doesn't work
+// fn int_sqrt<Int: PrimInt>(val: Int) -> Int {
+//     let mut x = val;
+//     loop {
+//         let y = (x + val / x) >> 2;
+//         if y < x {
+//             x = y;
+//         } else {
+//             return x;
+//         }
+//     }
+// }
+// Based on https://en.wikipedia.org/wiki/Integer_square_root
+fn ceil_log2(n: u64) -> u32 {
+    64 - n.leading_zeros() - 1
 }
 
-pub fn is_perfect_square<Int: PrimInt>(val: Int) -> Option<Int> {
+fn int_sqrt(s: u64) -> u64 {
+    if s < 4 {
+        return (s + 1) / 2;
+    }
+
+    let n = (ceil_log2(s) + 1) / 2;
+    let mut r = (1 << (n - 1)) + (s >> (n + 1));
+    let mut r_o = 0;
+
+    let mut i = 0;
+    while i < 3 && (r as i64 - r_o as i64).abs() > 1 {
+        r_o = r;
+        r = (r + s / r) >> 1;
+        i += 1;
+    }
+    return r;
+}
+
+pub fn is_perfect_square<Int: PrimInt + std::fmt::Debug>(val: Int) -> Option<Int> {
     if Q64[(val % Int::from(64).unwrap()).to_usize().unwrap()] == false {
         return None;
     }
@@ -591,11 +623,16 @@ pub fn is_perfect_square<Int: PrimInt>(val: Int) -> Option<Int> {
     } else if Q11[r.to_usize().unwrap() % 11] == false {
         return None;
     }
+    if val < Int::zero() {
+        return None;
+    }
+    let val = val.to_u64().unwrap();
     let q = int_sqrt(val);
     if q * q != val {
+        dbg!(q);
         None
     } else {
-        Some(q)
+        Some(Int::from(q).unwrap())
     }
 }
 
@@ -693,5 +730,27 @@ mod tests {
         let b = ZiElement::from(qfelement!((10) + (5)sqrt(-1)));
 
         println!("{}", gcd(a.clone() * b.clone(), a.clone()).inner);
+    }
+
+    #[test]
+    fn test_sqrt() {
+        let a = ZiElement::from(qfelement!((10) + (-7)sqrt(-1)));
+        let b = ZiElement::from(qfelement!((-10) + (5)sqrt(-1)));
+
+        assert!((a.clone() * a.clone()).square_root().is_some());
+        assert!((b.clone() * b.clone()).square_root().is_some());
+        assert!(a.clone().square_root().is_none());
+
+        let a_sq_sqrt = (a.clone() * a.clone()).square_root().unwrap();
+        assert!(a_sq_sqrt == a.clone() || a_sq_sqrt == -a.clone());
+        
+        let ab_sq_sqrt = (a.clone() * b.clone() * a.clone() * b.clone()).square_root().unwrap();
+        assert!(ab_sq_sqrt == a.clone() * b.clone() || ab_sq_sqrt == -a.clone() * b.clone());
+    }
+
+    #[test]
+    fn test_integer_sqrt() {
+        // weird case that failed with old algorithm
+        assert_eq!(int_sqrt(149 * 149), 149);
     }
 }
